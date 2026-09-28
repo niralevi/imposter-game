@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>מי האימפוסטר?</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f6f4ff;--card:#fff;--tx:#1d1b2e;--mu:#6b6885;--ac:#6d4aff;--ac2:#ff4a7a;--bd:#e3e0f5}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15132a;--card:#211e3d;--tx:#f1efff;--mu:#a19dc4;--ac:#8f74ff;--ac2:#ff6d95;--bd:#34305a}}
+:root[data-theme="dark"]{--bg:#15132a;--card:#211e3d;--tx:#f1efff;--mu:#a19dc4;--ac:#8f74ff;--ac2:#ff6d95;--bd:#34305a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Arial,"Heebo",sans-serif;min-height:100vh}
+main{max-width:480px;margin:0 auto;padding:20px 16px 40px}
+h1{text-align:center;font-size:30px;margin:8px 0 4px}
+.sub{text-align:center;color:var(--mu);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:18px;padding:18px;margin-bottom:14px}
+input{width:100%;font:inherit;font-size:18px;padding:12px 14px;border-radius:12px;border:2px solid var(--bd);background:var(--bg);color:var(--tx);margin-bottom:10px}
+input:focus{outline:none;border-color:var(--ac)}
+button{font:inherit;font-weight:700;font-size:17px;padding:13px 16px;border-radius:12px;border:0;background:var(--ac);color:#fff;width:100%;cursor:pointer;margin-top:4px}
+button.sec{background:transparent;color:var(--ac);border:2px solid var(--ac)}
+button:disabled{opacity:.45;cursor:default}
+.code{font-size:44px;font-weight:800;letter-spacing:8px;text-align:center;color:var(--ac);direction:ltr}
+.pl{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{background:var(--bg);border:1px solid var(--bd);border-radius:999px;padding:6px 14px;font-weight:600}
+.q{font-size:24px;font-weight:700;text-align:center;line-height:1.4;margin:6px 0 16px}
+.mu{color:var(--mu);text-align:center;font-size:15px}
+.ans{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--bd)}
+.ans:last-child{border:0}
+.ans b{font-size:20px}
+.ans .v{width:auto;margin:0;padding:8px 14px;font-size:15px}
+.ans .v.on{background:var(--ac2)}
+.big{font-size:26px;font-weight:800;text-align:center;margin:4px 0 8px}
+.bad{color:var(--ac2)}
+.err{color:var(--ac2);text-align:center;font-weight:600}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const PAIRS=[
+["כמה אחים ואחיות יש לך?","כמה בקבוקים יש עכשיו על השולחן שלך?"],
+["כמה נעליים יש לך בבית?","כמה כוסות יש בארון במטבח שלך?"],
+["כמה שעות ישנת אתמול?","כמה כוסות מים שתית היום?"],
+["כמה מדינות ביקרת בהן?","כמה ערים גרת בהן בחיים?"],
+["כמה אנשים יש לך באנשי הקשר בטלפון?","כמה אפליקציות יש לך על המסך הראשי?"],
+["כמה פעמים אכלת היום?","כמה קפה שתית היום?"],
+["כמה בני דודים יש לך?","כמה חברים קרובים יש לך?"],
+["מה הגיל של האדם הכי מבוגר שאתה מכיר?","בן כמה היית כשלמדת לרכוב על אופניים?"],
+["כמה ספרים יש לך בבית?","כמה סרטים ראית החודש?"],
+["כמה חולצות שחורות יש לך?","כמה זוגות גרביים יש לך בערך?"],
+["בסולם 1 עד 10, כמה אתה אוהב פיצה?","בסולם 1 עד 10, כמה אתה אוהב לקום בבוקר?"],
+["כמה קילומטרים אתה גר מהחבר הכי קרוב שלך?","כמה דקות לוקח לך להגיע לעבודה או ללימודים?"]
+];
+
+function makeShim(){
+  return {join:name=>new Promise((resolve,reject)=>{
+    const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);
+    let myId=null,list=[],ph=[],topics={};
+    const room={
+      emit:(t,d)=>{ws.send(JSON.stringify({t:'emit',topic:t,data:d}));return Promise.resolve()},
+      on:(t,f)=>{(topics[t]=topics[t]||[]).push(f)},
+      presence:p=>{ws.send(JSON.stringify({t:'presence',name:p.name}));return Promise.resolve()},
+      peers:()=>list.map(x=>({kind:'viewer',peer:x.peer,presence:{name:x.name},isMe:x.peer===myId,sameTab:x.peer===myId})),
+      onPeers:f=>{ph.push(f)}
+    };
+    ws.onmessage=e=>{
+      const m=JSON.parse(e.data);
+      if(m.t==='hello'){myId=m.peer;resolve(room)}
+      else if(m.t==='peers'){list=m.list;ph.forEach(f=>f())}
+      else if(m.t==='msg'){(topics[m.topic]||[]).forEach(f=>f({topic:m.topic,data:m.data,peer:m.peer,isMe:m.peer===myId,sameTab:m.peer===myId,kind:'viewer'}))}
+    };
+    ws.onopen=()=>ws.send(JSON.stringify({t:'join',room:name}));
+    ws.onerror=()=>reject(new Error('ws'));
+    ws.onclose=()=>{alert('החיבור לשרת נותק. רעננו את הדף.')};
+  })};
+}
+const $app=document.getElementById('app');
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let R=null,room=null,code='',isHost=false,myName='',S=null,err='',myPeer=null,roomOk=undefined;
+
+function players(){
+  const seen={},out=[];
+  for(const p of room?room.peers():[]){
+    if(p.kind!=='viewer'||!p.presence||!p.presence.name||seen[p.peer])continue;
+    seen[p.peer]=1;out.push({p:p.peer,n:String(p.presence.name).slice(0,16),me:p.isMe&&p.sameTab});
+    if(p.isMe&&p.sameTab)myPeer=p.peer;
+  }
+  return out;
+}
+function nameOf(id){const x=S&&S.players.find(q=>q.p===id);return x?x.n:'?'}
+
+function render(){
+  if(roomOk===undefined){$app.innerHTML='<p class="mu">טוען…</p>';return}
+  if(roomOk===false){$app.innerHTML='<h1>🕵️ מי האימפוסטר?</h1><p class="err">אי אפשר להתחבר למשחק כאן. פתחו את הקישור ב-claude.ai כשאתם מחוברים.</p>';return}
+  let h='';
+  if(!room){
+    h=`<h1>🕵️ מי האימפוסטר?</h1><p class="sub">כולם עונים על אותה שאלה. חוץ מאחד.</p>
+    <div class="card"><input id="nm" placeholder="השם שלך" maxlength="16" value="${esc(myName)}">
+    <button id="mk">צור לובי חדש</button></div>
+    <div class="card"><input id="cd" placeholder="קוד לובי" inputmode="numeric" maxlength="4" style="direction:ltr;text-align:center">
+    <button class="sec" id="jn">הצטרף עם קוד</button></div>${err?`<p class="err">${esc(err)}</p>`:''}`;
+  }else if(!S){
+    const pl=players();
+    h=`<h1>לובי</h1><div class="card"><p class="mu" style="margin:0">קוד הלובי</p><div class="code">${esc(code)}</div>
+    <div class="pl">${pl.map(x=>`<span class="chip">${esc(x.n)}${x.me?' (את/ה)':''}</span>`).join('')}</div></div>`+
+    (isHost?`<button id="st" ${pl.length<3?'disabled':''}>התחל משחק (${pl.length} שחקנים)</button><p class="mu">צריך לפחות 3 שחקנים</p>`:`<p class="mu">מחכים שהמארח יתחיל…</p>`);
+  }else{
+    const amImp=S.imp===myPeer,myQ=amImp?S.b:S.a,n=S.players.length;
+    const got=Object.keys(S.answers).length,voted=Object.keys(S.votes).length;
+    if(!S.showAns){
+      const done=S.answers[myPeer]!==undefined;
+      h=`<h1>השאלה שלך</h1><div class="card"><div class="q">${esc(myQ)}</div>`+
+      (done?`<p class="mu">התשובה נשלחה. מחכים לשאר (${got}/${n})</p>`:`<input id="an" placeholder="התשובה שלך" maxlength="60"><button id="sa">שלח תשובה</button>`)+
+      `</div>`+(isHost?`<button class="sec" id="sh">הצג תשובות עכשיו</button>`:'');
+    }else if(!S.revealed){
+      const mv=S.votes[myPeer];
+      h=`<h1>מי קיבל שאלה אחרת?</h1><p class="sub">דברו, תשאלו, תחשדו. אחר כך הצביעו.</p><div class="card">`+
+      S.players.map(x=>`<div class="ans"><div><div class="mu" style="text-align:start">${esc(x.n)}</div><b>${esc(S.answers[x.p]??'—')}</b></div>
+      ${x.p===myPeer?'':`<button class="v ${mv===x.p?'on':''}" data-v="${esc(x.p)}">${mv===x.p?'הצבעת ✓':'חשוד'}</button>`}</div>`).join('')+
+      `</div><p class="mu">הצביעו ${voted}/${n}</p>`+(isHost?`<button class="sec" id="rv">חשוף עכשיו</button>`:'');
+    }else{
+      const tally={};Object.values(S.votes).forEach(t=>tally[t]=(tally[t]||0)+1);
+      const max=Math.max(0,...Object.values(tally)),top=Object.keys(tally).filter(k=>tally[k]===max);
+      const caught=top.length===1&&top[0]===S.imp;
+      h=`<h1>${caught?'🎉 תפסתם אותו!':'😈 האימפוסטר ברח!'}</h1><div class="card">
+      <p class="mu" style="margin:0">האימפוסטר היה</p><div class="big bad">${esc(nameOf(S.imp))}</div>
+      <p class="mu" style="margin:14px 0 4px">כולם קיבלו:</p><div style="text-align:center;font-weight:700">${esc(S.a)}</div>
+      <p class="mu" style="margin:14px 0 4px">האימפוסטר קיבל:</p><div style="text-align:center;font-weight:700">${esc(S.b)}</div></div>
+      <div class="card">`+S.players.map(x=>`<div class="ans"><span>${esc(x.n)}: <b>${esc(S.answers[x.p]??'—')}</b></span><span class="mu">${tally[x.p]||0} קולות</span></div>`).join('')+`</div>`+
+      (isHost?`<button id="nx">סיבוב חדש</button>`:`<p class="mu">מחכים למארח לסיבוב הבא…</p>`);
+    }
+  }
+  $app.innerHTML=h;bind();
+}
+
+function bind(){
+  const g=id=>document.getElementById(id);
+  if(g('mk'))g('mk').onclick=()=>{const n=g('nm').value.trim();if(!n){err='כתבו שם';return render()}myName=n;isHost=true;enter(String(1000+Math.floor(Math.random()*9000)))};
+  if(g('jn'))g('jn').onclick=()=>{const n=g('nm').value.trim(),c=g('cd').value.trim();if(!n||c.length!==4){err='כתבו שם וקוד בן 4 ספרות';myName=n;return render()}myName=n;isHost=false;enter(c)};
+  if(g('st'))g('st').onclick=startRound;
+  if(g('sa'))g('sa').onclick=sendAns;
+  if(g('an')){g('an').focus();g('an').onkeydown=e=>{if(e.key==='Enter')sendAns()}}
+  if(g('sh'))g('sh').onclick=()=>room.emit('showans',{rid:S.rid});
+  if(g('rv'))g('rv').onclick=()=>room.emit('reveal',{rid:S.rid});
+  if(g('nx'))g('nx').onclick=startRound;
+  document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>room.emit('vote',{rid:S.rid,t:b.dataset.v}));
+}
+async function enter(c){
+  err='';code=c;
+  try{
+    room=await R.join('mp'+c);
+    await room.presence({name:myName});
+    room.onPeers(()=>{if(!S)render()});
+    room.on('round',m=>{const d=m.data;if(!d||!Array.isArray(d.players))return;S={rid:d.rid,a:String(d.a),b:String(d.b),imp:d.imp,players:d.players,answers:{},votes:{},showAns:false,revealed:false};render()});
+    room.on('answer',m=>{if(!S||!m.data||m.data.rid!==S.rid||!S.players.some(x=>x.p===m.peer))return;S.answers[m.peer]=String(m.data.t).slice(0,60);if(Object.keys(S.answers).length>=S.players.length)S.showAns=true;render()});
+    room.on('showans',m=>{if(S&&m.data&&m.data.rid===S.rid){S.showAns=true;render()}});
+    room.on('vote',m=>{if(!S||!m.data||m.data.rid!==S.rid||!S.players.some(x=>x.p===m.peer)||!S.players.some(x=>x.p===m.data.t)||m.data.t===m.peer)return;S.votes[m.peer]=m.data.t;if(Object.keys(S.votes).length>=S.players.length)S.revealed=true;render()});
+    room.on('reveal',m=>{if(S&&m.data&&m.data.rid===S.rid){S.revealed=true;render()}});
+  }catch(e){room=null;err='לא הצלחנו להיכנס ללובי';}
+  render();
+}
+function startRound(){
+  const pl=players();if(pl.length<3)return;
+  const pr=PAIRS[Math.floor(Math.random()*PAIRS.length)],sw=Math.random()<.5;
+  const imp=pl[Math.floor(Math.random()*pl.length)].p;
+  room.emit('round',{rid:Date.now(),a:pr[sw?1:0],b:pr[sw?0:1],imp,players:pl.map(x=>({p:x.p,n:x.n}))});
+}
+function sendAns(){
+  const el=document.getElementById('an'),t=el&&el.value.trim();if(!t)return;
+  room.emit('answer',{rid:S.rid,t});
+}
+R=makeShim();roomOk=true;render();
+</script>
+</body>
+</html>
